@@ -1,0 +1,157 @@
+<body>
+<h1>Lagerverwaltung</h1>
+
+<form id="artikelForm">
+  <input type="text" placeholder="Artikelnummer" name="artikelnummer" required>
+  <input type="text" placeholder="Bezeichnung" name="bezeichnung" required>
+  <input type="text" placeholder="Lagerort" name="lagerort" required>
+  <input type="number" placeholder="Bestand" name="bestand" required min="0">
+  <input type="number" placeholder="Mindestbestand" name="mindestbestand" required min="0">
+  <input type="text" placeholder="Einheit" name="einheit">
+  <button type="submit">Hinzufügen</button>
+</form>
+
+<hr>
+
+<!-- 🔍 Filterbereich -->
+<input type="text" id="suche" placeholder="🔍 Suche nach Bezeichnung oder Artikelnummer..." style="width: 60%; padding: 5px;">
+<label>
+  <input type="checkbox" id="filterMindestbestand">
+  Nur Artikel unter Mindestbestand anzeigen
+</label>
+
+<h3>Artikelliste</h3>
+<table id="artikeltabelle">
+  <thead>
+    <tr>
+      <th data-sort="bezeichnung">Bezeichnung ⬍</th>
+      <th data-sort="artikelnummer">Artikelnummer</th>
+      <th>Lagerort</th>
+      <th>Bestand</th>
+      <th>Mindestbestand</th>
+      <th>Einheit</th>
+      <th>Aktion</th>
+    </tr>
+  </thead>
+  <tbody></tbody>
+</table>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import { getFirestore, collection, addDoc, deleteDoc, doc, updateDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyDkS9x7K9MGN0MEZ1U2tQNA4Yr8",
+  authDomain: "lagerverwaltung-39b20.firebaseapp.com",
+  projectId: "lagerverwaltung-39b20",
+  storageBucket: "lagerverwaltung-39b20.appspot.com",
+  messagingSenderId: "123456789",
+  appId: "1:123456789:web:abcde12345"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+const artikelRef = collection(db, "artikel");
+
+const form = document.getElementById('artikelForm');
+const tabelle = document.querySelector('#artikeltabelle tbody');
+const sucheInput = document.getElementById('suche');
+const filterCheckbox = document.getElementById('filterMindestbestand');
+
+let artikelListe = [];
+
+form.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const data = {
+    artikelnummer: form.artikelnummer.value,
+    bezeichnung: form.bezeichnung.value,
+    lagerort: form.lagerort.value,
+    bestand: parseInt(form.bestand.value),
+    mindestbestand: parseInt(form.mindestbestand.value),
+    einheit: form.einheit.value
+  };
+
+  try {
+    if (form.dataset.editId) {
+      await updateDoc(doc(db, "artikel", form.dataset.editId), data);
+      form.dataset.editId = '';
+    } else {
+      await addDoc(artikelRef, data);
+    }
+    form.reset();
+  } catch (err) {
+    alert("Fehler: " + err.message);
+  }
+});
+
+function editArtikel(id) {
+  const art = artikelListe.find(a => a.id === id);
+  form.artikelnummer.value = art.artikelnummer;
+  form.bezeichnung.value = art.bezeichnung;
+  form.lagerort.value = art.lagerort;
+  form.bestand.value = art.bestand;
+  form.mindestbestand.value = art.mindestbestand;
+  form.einheit.value = art.einheit;
+  form.dataset.editId = id;
+  form.querySelector("button").textContent = "Aktualisieren";
+}
+
+async function deleteArtikel(id) {
+  if (confirm("Wirklich löschen?")) {
+    await deleteDoc(doc(db, "artikel", id));
+  }
+}
+
+function renderTabelle() {
+  const suchbegriff = sucheInput.value.toLowerCase();
+  const nurUnterMindest = filterCheckbox.checked;
+
+  tabelle.innerHTML = '';
+  artikelListe
+    .filter(art => {
+      const matchSuche =
+        art.bezeichnung.toLowerCase().includes(suchbegriff) ||
+        art.artikelnummer.toLowerCase().includes(suchbegriff);
+      const matchMindest = !nurUnterMindest || art.bestand < art.mindestbestand;
+      return matchSuche && matchMindest;
+    })
+    .forEach(art => {
+      const row = document.createElement('tr');
+      if (art.bestand < art.mindestbestand) row.classList.add('low-stock');
+      row.innerHTML = `
+        <td>${art.bezeichnung}</td>
+        <td>${art.artikelnummer}</td>
+        <td>${art.lagerort}</td>
+        <td>${art.bestand}</td>
+        <td>${art.mindestbestand}</td>
+        <td>${art.einheit}</td>
+        <td>
+          <button onclick="editArtikel('${art.id}')">✏️</button>
+          <button onclick="deleteArtikel('${art.id}')">🗑️</button>
+        </td>`;
+      tabelle.appendChild(row);
+    });
+}
+
+onSnapshot(artikelRef, (snapshot) => {
+  artikelListe = [];
+  snapshot.forEach(doc => artikelListe.push({ id: doc.id, ...doc.data() }));
+  renderTabelle();
+});
+
+sucheInput.addEventListener('input', renderTabelle);
+filterCheckbox.addEventListener('change', renderTabelle);
+
+// Spaltensortierung
+document.querySelectorAll('th[data-sort]').forEach(th => {
+  th.addEventListener('click', () => {
+    const key = th.dataset.sort;
+    artikelListe.sort((a, b) => a[key]?.toString().localeCompare(b[key]?.toString()));
+    renderTabelle();
+  });
+});
+
+window.editArtikel = editArtikel;
+window.deleteArtikel = deleteArtikel;
+</script>
+</body>
